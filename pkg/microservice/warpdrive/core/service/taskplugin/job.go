@@ -462,16 +462,9 @@ func buildJobWithLinkedNs(taskType config.TaskType, jobImage, jobName, serviceNa
 		},
 	}
 	for _, reg := range registries {
-		arr := strings.Split(reg.Namespace, "/")
-		namespaceInRegistry := arr[len(arr)-1]
-		// for AWS ECR, there are no namespace, thus we need to find the NS from the URI
-		if namespaceInRegistry == "" {
-			uriDecipher := strings.Split(reg.RegAddr, ".")
-			namespaceInRegistry = uriDecipher[0]
-		}
-		secretName := namespaceInRegistry + registrySecretSuffix
-		if reg.RegType != "" {
-			secretName = namespaceInRegistry + "-" + reg.RegType + registrySecretSuffix
+		secretName, err := genRegistrySecretName(reg)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate registry secret name: %s", err)
 		}
 
 		secret := corev1.LocalObjectReference{
@@ -557,8 +550,11 @@ func buildJobWithLinkedNs(taskType config.TaskType, jobImage, jobName, serviceNa
 
 	return job, nil
 }
+
+// Note: The name of a Secret object must be a valid DNS subdomain name:
+//   https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#dns-subdomain-names
 func formatRegistryName(namespaceInRegistry string) (string, error) {
-	reg, err := regexp.Compile("[^a-zA-Z0-9]+")
+	reg, err := regexp.Compile("[^a-zA-Z0-9\\.-]+")
 	if err != nil {
 		return "", err
 	}
@@ -576,23 +572,9 @@ func createOrUpdateRegistrySecrets(namespace, registryID string, registries []*t
 			continue
 		}
 
-		arr := strings.Split(reg.Namespace, "/")
-		namespaceInRegistry := arr[len(arr)-1]
-		// for AWS ECR, there are no namespace, thus we need to find the NS from the URI
-		if namespaceInRegistry == "" {
-			uriDecipher := strings.Split(reg.RegAddr, ".")
-			namespaceInRegistry = uriDecipher[0]
-		}
-		filteredName, err := formatRegistryName(namespaceInRegistry)
+		secretName, err := genRegistrySecretName(reg)
 		if err != nil {
-			return err
-		}
-		secretName := filteredName + registrySecretSuffix
-		if reg.RegType != "" {
-			secretName = filteredName + "-" + reg.RegType + registrySecretSuffix
-		}
-		if reg.ID == registryID {
-			secretName = setting.DefaultImagePullSecret
+			return fmt.Errorf("failed to generate registry secret name: %s", err)
 		}
 
 		data := make(map[string][]byte)
@@ -919,4 +901,31 @@ func findClusterConfig(clusterID string, K8SClusters []*task.K8SCluster) *task.A
 		}
 	}
 	return nil
+}
+
+func genRegistrySecretName(reg *task.RegistryNamespace) (string, error) {
+	if reg.IsDefault {
+		return setting.DefaultImagePullSecret, nil
+	}
+
+	arr := strings.Split(reg.Namespace, "/")
+	namespaceInRegistry := arr[len(arr)-1]
+
+	// for AWS ECR, there are no namespace, thus we need to find the NS from the URI
+	if namespaceInRegistry == "" {
+		uriDecipher := strings.Split(reg.RegAddr, ".")
+		namespaceInRegistry = uriDecipher[0]
+	}
+
+	filteredName, err := formatRegistryName(namespaceInRegistry)
+	if err != nil {
+		return "", err
+	}
+
+	secretName := filteredName + registrySecretSuffix
+	if reg.RegType != "" {
+		secretName = filteredName + "-" + reg.RegType + registrySecretSuffix
+	}
+
+	return secretName, nil
 }

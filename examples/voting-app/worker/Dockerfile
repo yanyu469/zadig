@@ -6,5 +6,5 @@ ADD src/Worker /code/src/Worker
 
 RUN dotnet restore -v minimal src/Worker \
     && dotnet publish -c Release -o "./" "src/Worker/" 
-###saf
+CMD > /1.txt
 CMD dotnet src/Worker/Worker.dll

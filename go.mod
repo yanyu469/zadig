@@ -103,4 +103,6 @@ replace (
 	k8s.io/klog/v2 => k8s.io/klog/v2 v2.9.0
 	k8s.io/kubectl => k8s.io/kubectl v0.21.0
 	oras.land/oras-go => oras.land/oras-go v0.4.0
+	
+	
 )
